@@ -1,0 +1,5 @@
+loop,n,large_error_threshold,unit,n_large_saturated,n_large_midrange,n_small_saturated,n_small_midrange,verdict,share_saturated_when_erroring
+AHU-1 SAT loop,1807,1.0,K,14,574,0,1219,MIS-TUNED - authority in reserve while missing setpoint; needs retuning,0.023809523809523808
+AHU-1 static pressure loop,1807,0.05,inWG,2,140,0,1665,MIS-TUNED - authority in reserve while missing setpoint; needs retuning,0.014084507042253521
+AHU-2 SAT loop,2098,1.0,K,214,508,5,1371,MIS-TUNED - authority in reserve while missing setpoint; needs retuning,0.296398891966759
+AHU-2 static pressure loop,2098,0.05,inWG,6,331,0,1761,MIS-TUNED - authority in reserve while missing setpoint; needs retuning,0.017804154302670624

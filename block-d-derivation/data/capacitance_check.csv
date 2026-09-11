@@ -1,0 +1,4 @@
+assumed_zone_area_m2,assumed_height_m,assumed_surface_coeff_w_per_m2k,c_air_kj_per_k,conductance_w_per_k,tau_air_only_h,tau_air_only_min,tau_measured_h,capacitance_ratio_at_tau_measured,capacitance_ratio_at_tau_2p5h
+50.0,3.0,4.0,180.9,200.0,0.25125,15.075,0.977145855764348,3.889137734385465,9.950248756218906
+50.0,3.0,8.0,180.9,400.0,0.125625,7.5375,0.977145855764348,7.77827546877093,19.900497512437813
+50.0,3.0,12.0,180.9,600.0,0.08375,5.025,0.977145855764348,11.667413203156393,29.850746268656714

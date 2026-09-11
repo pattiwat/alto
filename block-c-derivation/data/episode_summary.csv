@@ -1,0 +1,2 @@
+ahu,episode,n_treated,n_control,sp_ratio,flow_ratio_observed,share_allocation_error_pct,mean_damper_treated,mean_damper_control,saturated_share_treated,saturated_share_control,n_episodes,damper_delta_pts
+1,14.0,6.5,8.0,0.9052991105020716,0.9507577020962341,5.3492514532242605,45.511406521739126,47.1618097826087,0.0,0.0,8,-1.6504032608695738

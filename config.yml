@@ -1,0 +1,340 @@
+# All tuning parameters live here.
+# Brief: "make tuning parameters explicit and configurable".
+
+data:
+  # Raw CSV. NOT committed - see .gitignore. Path is resolved relative to the repo root.
+  csv_path: alto_building_floor8_15min_2026-05-18_to_2026-08-23.csv
+  timezone: Asia/Bangkok
+  expected_freq: 15min
+
+energy_balance:
+  # --- Layer 1: fluid properties used to derive the predicted constant -------------
+  fluid:
+    # 0.9997 kg/L at ~10 degC. Rounded to 1.000; the -0.03% is recorded as an
+    # assumption rather than modelled.
+    density_kg_per_l: 1.000
+    cp_kj_per_kg_k: 4.186
+
+  # --- Layer 2: the coil-on mask ---------------------------------------------------
+  # The balance only holds where the coil is actually moving heat. Off-coil steps make
+  # Q / (flow * dT) a 0/0 form, which is what destabilises a naive ratio.
+  mask:
+    min_flow_l_per_min: 5.0
+    min_delta_t_deg_f: 1.0
+    min_cooling_rate_kw: 0.5
+
+  # --- Layer 3: the estimator ------------------------------------------------------
+  bootstrap:
+    n_resamples: 2000
+    seed: 0
+    ci: 0.95
+
+  # --- Layer 4: the discrimination test --------------------------------------------
+  # The hypothesis that must win, and the factor by which it must beat the runner-up.
+  # This is the real assertion: rival hypotheses are 1.8x to 3400x out, so a tolerance
+  # band around the winner is a far weaker test than requiring a clear margin.
+  accepted_hypothesis: "flow L/min, dT degF -> kW"
+  min_discrimination_margin: 1.5
+
+  # Regression guard on the fitted constant. Not the physics claim - see the margin
+  # test above - just a tripwire so a refactor cannot silently move the number.
+  k_ratio_bounds: [0.95, 1.10]
+
+qc:
+  # water_delta_temperature is expected to be exactly (return - supply) water temp.
+  # Tolerance is in degF and generous: the point is to prove the identity holds, not
+  # to police sensor noise.
+  delta_t_derived_tolerance_deg_f: 2.0
+
+
+# =====================================================================================
+# CONTROL GAP
+# =====================================================================================
+# "The gap" is three gaps, and they need different methods:
+#   G1 regulatory  - do the loops hold the setpoints they were already given?
+#   G2 supervisory - are those setpoints the right ones?
+#   G3 energy      - what do G1 and G2 cost?
+# G1 and G2 are NOT additive: fixing the SAT loop changes the load the pressure reset
+# sees. Evaluate cumulatively in a stated order, never by summing.
+
+control_gap:
+
+  # --- The shared analysis mask ----------------------------------------------------
+  # Defined once, in src/masks.py, and used by every method. This is what enforces
+  # "baseline and counterfactual see exactly the same mask" - if the controller were
+  # evaluated on more steps than the baseline, the mask treatment alone would
+  # manufacture savings.
+  mask:
+    # On-hours. Below this the fan is stopped and every tracking error is meaningless.
+    min_fan_hz: 5.0
+    # override_control == 1 is "auto". Anything else is a human driving the plant by
+    # hand (~8% of steps), and neither the baseline nor a controller owns those steps.
+    # Values are fractional because binaries are logged as fraction-of-slot-on, so any
+    # departure from 1.0 means the override was engaged for part of the bucket.
+    normal_override_value: 1.0
+    override_tolerance: 1.0e-6
+    # A step where more than this fraction of the loaded columns is null is a collector
+    # outage, not a plant state. Four contiguous outages account for ~7% of the record.
+    outage_null_fraction: 0.5
+    # Steps to drop after any setpoint change, so a transient is never read as a
+    # steady-state response. 2 steps = 30 min.
+    settling_steps: 2
+    # 0.00 in the AHU-1 VAV room-temperature points is a bad-read sentinel, not a
+    # value (min non-zero is 6.49). Mask it; never average it.
+    room_temp_sentinel: 0.0
+    room_temp_sentinel_tolerance: 1.0e-9
+
+  # --- M1: loop scorecard + authority diagnostic (G1) -------------------------------
+  loops:
+    # Saturation as a fraction of each actuator's own span, not an absolute percent:
+    # a valve runs 0-100% but a VSD runs 0-50 Hz, so a fixed ">95" would never fire on
+    # the fan and the authority diagnostic would silently always read "mis-tuned".
+    saturation_high_fraction: 0.95
+    saturation_low_fraction: 0.05
+    actuator:
+      cooling_valve_position_read: {unit: "%", min: 0.0, max: 100.0}
+      frequency: {unit: "Hz", min: 0.0, max: 50.0}
+    # Tracking tolerance per controlled variable, in that variable's own unit.
+    # These are commissioning conventions, not physics - so the scorecard measures a
+    # gap against convention, and says so.
+    tolerance:
+      supply_air_temperature: 1.0      # K
+      static_pressure: 0.05            # inWG
+      room_temperature: 1.0            # K
+    # The authority diagnostic splits large-error steps by whether the actuator had
+    # anywhere left to go. Large error + mid-range actuator = mis-tuned. Large error +
+    # saturated actuator = starved. This is what turns "mis-tuned, not starved" from
+    # an adjective into evidence.
+    authority_large_error_multiple: 1.0
+
+  # --- M4: natural-experiment identification (the enabler for G3) -------------------
+  # The plant lowered its own static-pressure setpoint on ~55 occasions across 21 days,
+  # none of them under operator override. Those episodes are a natural experiment, and
+  # they measure the SP -> Hz link that would otherwise have to be assumed.
+  excitation:
+    # A departure of at least this much from the modal setpoint starts an episode.
+    # Units are the setpoint's own; set per signal below.
+    min_step_change:
+      static_pressure_setpoint_read: 0.02       # inWG
+      supply_air_temperature_setpoint_read: 0.15  # K
+    # Episodes shorter than this are transients, not responses.
+    min_episode_steps: 3
+    # Each episode is compared against its own immediately-before and -after steps at
+    # the normal setpoint: a within-day control window, so time-of-day, weather and
+    # occupancy are approximately held fixed by construction.
+    control_window_steps: 8
+    min_control_steps: 4
+    # Block bootstrap over EPISODES, not steps. 15-min steps inside an episode are
+    # heavily autocorrelated, so an i.i.d. step resample would understate the interval
+    # badly. The episode is the natural block.
+    bootstrap:
+      n_resamples: 2000
+      seed: 0
+      ci: 0.95
+    # What the textbook affinity law assumes: at a fixed system curve fan pressure
+    # goes as Hz^2, so Hz scales as sqrt(SP) -> dlnHz/dlnSP = 0.5. This is the value
+    # under test, NOT a value being applied.
+    assumed_affinity_exponent: 0.5
+    # ...and the fan-power elasticity that follows from it under a cubic fan law.
+    assumed_power_elasticity: 1.5
+    # Three judgement calls define an episode, and none is forced by the data. On a
+    # sample this size they can move the estimate more than the effect being measured,
+    # so every combination is run and the spread is reported. A conclusion that only
+    # holds at one grid point is not a conclusion.
+    sweep:
+      settling_steps: [1, 2, 3]
+      min_episode_steps: [2, 3, 4, 6]
+      control_window_steps: [4, 8, 12]
+    # Confounders to condition on. Deliberately short: only variables that are not
+    # themselves caused by the setpoint change. Airflow, damper position and cooling
+    # rate are all MEDIATORS of the SP change - conditioning on them would block the
+    # very effect being measured.
+    controls:
+      - outdoor_weather_station__drybulb_temperature
+
+  # --- M6: model-free specific-fan-power benchmark (cross-check on G3) --------------
+  # Bin on-hours steps by delivered airflow and take a low percentile of fan power per
+  # unit airflow within each bin as the demonstrated-achievable level. No fan law, no
+  # affinity exponent, no COP: the plant demonstrated this itself.
+  benchmark:
+    n_flow_bins: 10
+    achievable_percentile: 10
+    min_bin_steps: 20
+    # Boxes whose flow reading is untrustworthy are excluded from the delivered-air
+    # total. vav_8_2_28 commands 100% damper and delivers ~0 against a 1,000 max-flow
+    # setpoint, so its flow point cannot be summed into a floor total.
+    max_flow_ratio_dead_box: 0.10
+    # Boxes grey-box-surrogate.md 4.3 names as rogue: they read as connected but their
+    # flow/damper pair does not behave like a box under control. Distinct from `dead`
+    # above, which is a measured rule - this one is a named judgement, so it belongs in
+    # config where it can be seen and argued with rather than in a script.
+    rogue_boxes:
+      - vav_8_1_28
+      - vav_8_2_15
+      - vav_8_2_23
+      - vav_8_1_26
+      - vav_8_1_16
+    # The "screwdriver" benchmark: a blunt fixed reduction of the static-pressure
+    # setpoint, with no logic behind it. Set to the size of cut the plant itself
+    # demonstrated during its setpoint episodes (~21%), so the modelled saving and the
+    # measured response describe the same intervention.
+    naive_cut_fraction: 0.20
+    # M5 (replay ladder) and M6 (percentile) share no assumptions. Stating the
+    # agreement factor in advance stops it from being chosen after seeing the answer.
+    agreement_factor: 2.0
+
+  # --- Effect models ----------------------------------------------------------------
+  effects:
+    # The three fan-power models reported as a band. The offset cubic is the headline:
+    # a fixed motor/VSD loss plus a cube-law aerodynamic term. A naive power law is
+    # poorly identified over this floor's narrow operating band.
+    rated_hz: 50.0
+    min_fit_steps: 100
+
+  # --- Zone airflow: the share form (Block C) ----------------------------------------
+  #   split :  V_i     = V_total * (a_i * d_i**p) / sum_j (a_j * d_j**p)
+  #   total :  V_total = C * (sum_j a_j*d_j**p)**q * SP_act**s
+  #
+  # Static pressure is common to every box at a timestep, so it CANCELS from the split:
+  # which room gets what air is purely relative damper opening, and pressure only sets
+  # how much there is to divide. That is not a modelling convenience, it is what makes
+  # a_i identifiable - a within-timestep regression puts pressure in the time effect,
+  # so the endogeneity that dogged the earlier per-box valve law cannot reach the split.
+  #
+  # SUPERSEDES the per-box valve law V = A * R**(d/100) * SP**s (two parameters per box,
+  # ~103 for the floor). That model is retained ONLY as the head-to-head reference the
+  # share form must beat; `pressure_exponent` below is its imposed exponent and is used
+  # for nothing else. Its guards - rangeability_bounds, max_negative_gamma_boxes,
+  # min_free_exponent_negative_gamma, saturated_exponent_reference - had no referent
+  # once R_i and gamma_i went away, and have been replaced by the share-form guards at
+  # the foot of this block rather than silently dropped.
+  zone_flow:
+    # Share exponent on damper opening. Fitted free it comes back at 0.875 (AHU-1) and
+    # 1.075 (AHU-2); imposing 1 costs <0.01 of within-R2, so the share is linear in
+    # damper opening and the exponent leaves the specification. IMPOSED, and the cost of
+    # imposing it is asserted below rather than assumed.
+    damper_share_exponent: 1.0
+    # The superseded per-box valve law's imposed orifice exponent. Used ONLY to fit the
+    # reference model in the head-to-head. Not part of the share form.
+    pressure_exponent: 0.5
+    # Damper at or above this has no authority left. Under the share form this is no
+    # longer a regime boundary - it is the clip in the counterfactual and a diagnostic.
+    saturated_damper: 99.9
+    # Duct static below this is a stopped or stopping fan, not an operating point.
+    min_sp_act: 0.05
+    # The split is fitted in ln(d), so a closed damper has no logarithm.
+    min_damper_open_pct: 1.0
+    min_fit_steps: 200
+    # Drop near-zero flow readings from a log-target fit, as a fraction of the box's own
+    # max-flow setpoint so the rule is unit-free (the m3/h question is still open) and
+    # consistent with max_flow_ratio_dead_box. A bare `flow > 0` lets parked boxes
+    # dominate gamma.
+    min_flow_fraction_of_max_sp: 0.02
+    # Lower clip in deliver(): a box cannot pass less than its damper floor allows.
+    damper_floor: 0.0
+    # There is no train/test precedent anywhere else in this repo, so the split is
+    # declared here rather than buried in a script. Three origins because one 21-day tail
+    # of a season-drifting record is one draw: the RANKING of models has to be stable,
+    # not the number.
+    holdout_days: 21
+    holdout_origins_days_back: [21, 42, 63]
+    # --- Guards. Each is a falsifier, wired to an assertion. -------------------------
+    # Pressure must cancel from the split EXACTLY, and shares must sum to 1 exactly.
+    # These are structural identities, not fits, so the tolerance is floating-point and
+    # not a modelling choice. If either trips, the share form is not what it claims.
+    share_invariance_tolerance: 1.0e-9
+    # Imposing p = 1 (share linear in damper opening) must cost less than this in
+    # within-R2 against a free exponent. Measured: ~0.000 (AHU-1), ~0.002 (AHU-2). If a
+    # mask change pushes it over, the exponent has to come back into the specification.
+    max_r2_cost_of_linear_share: 0.01
+    # Holdout MAE improvement below this is noise, not a better model.
+    min_holdout_improvement: 0.005
+    #
+    # RETIRED with the per-box valve law, kept here so the change is auditable rather
+    # than a silent deletion. rangeability_bounds [2.0, 12.0] and
+    # max_negative_gamma_boxes: 1 guarded R_i = exp(gamma_i), which the share form does
+    # not estimate; min_free_exponent_negative_gamma {1: 9, 2: 6} guarded the sign
+    # pathology that justified imposing the pressure exponent, which the within-timestep
+    # identification makes moot; saturated_exponent_reference {1: 0.719, 2: 1.652}
+    # guarded a saturated-only refit that no longer has a branch to run on. See
+    # block-c-derivation/README.md.
+    #
+    # BELONGS TO THE SUPERSEDED VALVE LAW. Neither is read by the current script. Left
+    # in place because the duct-loss scan is the unfinished reconciliation of the
+    # measured saturated exponents with the imposed 0.5, and deleting it would lose the
+    # question along with the answer.
+    state_map:
+      floor_ratio: 1.1
+      damper_mid: 75.0
+    # Duct loss: Dp_box = SP_act - c * V_total**2. SCANNED and REPORTED, never applied.
+    # It is the physical reconciliation of the measured 0.719/0.946 saturated exponents
+    # with the imposed 0.5, and it earns nothing on holdout - so it ships at zero, and an
+    # assertion keeps it there. With c != 0 the per-box fits couple through V_total and
+    # the estimator stops being independent polyfits.
+    duct_loss:
+      applied_c: 0.0
+      scan_dp_share: [0.0, 0.05, 0.10, 0.15, 0.20, 0.30]
+
+  # --- Zone control: the inner loops (Block F) ---------------------------------------
+  # The agent writes AHU setpoints; the 53 zone loops keep running underneath. Without
+  # them nothing produces `d_i`, and Block C's split has no input - the surrogate can
+  # replay a day but cannot answer a counterfactual. grey-box-surrogate.md 7.
+  #
+  # The plant runs TWO stages (hvac-system-logical-flow.md 61-62):
+  #     stage 1   room temperature error -> flow setpoint
+  #     stage 2   damper modulates until measured flow matches
+  # 7 of the surrogate specifies stage 1 only. It ends at V_sp_i; Block C begins at d_i;
+  # nothing joined them. This block is stage 2 plus an identifiable form of stage 1.
+  #
+  # WHY STAGE 1 CAN BE FITTED AT ALL. `V_sp_i` is NOT a logged point - each box logs only
+  # flow, damper, min/max flow setpoint, room temperature and its setpoint. 7's own recipe
+  # ("regress dV_sp_i on the zone temperature error") is therefore a regression on an
+  # unobservable, which is verbatim the objection 4.7.2(3) used to retire Block C v0. The
+  # way out is 0's Nyquist argument used forward: the damper loop is 1-5 min against a
+  # 15-min step, so it has SETTLED within a step and V_i ~= V_sp_i. The proxy holds only
+  # while the box has authority, which is why the exclusions below are not optional.
+  zone_control:
+    # Stage 1: V_i(t) = A_i + G_i * (T_i(t-1) - Tsp_i(t-1)). One gain per zone, fitted on
+    # logged flow, as a LEVEL. G_i > 0 is the sign the physics predicts - a warm zone asks
+    # for more air - and a negative gain is not a fit, it is a defect indicator (the same
+    # stance block-d takes on k_i, a_i, g_i >= 0).
+    #
+    # NOT the difference form dV_i = K_i*(T_i - Tsp_i) that 7 implies. That form asks a
+    # 15-min record to resolve the integrating action of a 1-5 min loop, which 0 forbids,
+    # and it returns the WRONG SIGN on 95%/77% of zones because dV = V(t) - V(t-1) inherits
+    # the negative of a level the controller already put into V(t-1). Both are fitted; the
+    # difference form is reported beside the level form so the correction stays visible.
+    min_gain_fit_steps: 40
+    # Fraction of identified zones whose gain must come back positive. Measured: 100%
+    # (AHU-1) and 95% (AHU-2) under the level form. Not all of them, because a zone can be
+    # identified on step count while still barely modulating.
+    min_positive_gain_fraction: 0.85
+    # THE AUTHORITY EXCLUSIONS. Where the box is against a stop, stage 2 cannot track and
+    # V_i != V_sp_i, so the proxy above breaks exactly where it matters. These steps are
+    # dropped from the GAIN FIT only - never from the comfort constraint, and never from
+    # the counterfactual, where clipping is the effect being measured.
+    exclude_damper_at_or_above: 99.0
+    exclude_flow_within_frac_of_min: 0.02
+    exclude_flow_within_frac_of_max: 0.02
+    # Stage 2 / F-a: invert Block C's split for the damper that delivers a requested
+    # flow. The unclipped inversion is CLOSED FORM (README 3.2); the iteration exists
+    # only to redistribute after boxes hit the 0/100 stops.
+    max_clip_iterations: 40
+    damper_max_pct: 100.0
+    # Adding-up and round-trip are structural identities, not fits, so the tolerance is
+    # floating point. If either trips, F-a is not inverting the model Block C forward-
+    # steps, and the two halves of the surrogate have drifted apart.
+    inversion_tolerance: 1.0e-7
+    # THE COMPENSATION AXIS. 4.3 puts the ventilation cost of a 20% pressure cut at
+    # 0.11%-10.79% (AHU-1) and 0.15%-14.92% (AHU-2), and says which end applies turns on
+    # whether the zone flow loops compensate - something no event in this record
+    # separates from a demand move. lam = 0 freezes the dampers, lam = 1 restores the
+    # requested flows; d(lam) interpolates. Carried as a DOMAIN-RANDOMISATION axis rather
+    # than chosen, which is the same treatment 8.2 already gives beta and s.
+    lambda_range: [0.0, 1.0]
+    lambda_grid: [0.0, 0.25, 0.5, 0.75, 1.0]
+    # The endpoints Block C reached by an independent route (a common damper scaling,
+    # not a per-box inversion). F-a must reproduce them when every box asks for the flow
+    # it already had, because the two algorithms then describe the same event. This is
+    # the cross-check that keeps the two blocks from drifting; it is asserted.
+    band_endpoint_tolerance_pct: 0.05

@@ -1,0 +1,3 @@
+ahu,n_coil_on,t_sa_mean_c,t_sw_mean_if_degc,t_sw_mean_if_degf,share_tsw_below_tsa_if_degc,share_tsw_below_tsa_if_degf
+1,2679,16.96687858529302,44.78381698394924,7.1021205466384645,0.0,1.0
+2,2676,15.78458101270553,44.79456390134529,7.108091056302941,0.0,1.0

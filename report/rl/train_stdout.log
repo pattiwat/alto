@@ -1,0 +1,28 @@
+building parameters from the derivation artifacts ...
+block                                                             source  reproduces_here
+    A     block-a-derivation/data/beta_summary.csv (NOT reproduced here)            False
+    B   block-b-derivation/data/models_by_mask.csv (NOT reproduced here)            False
+    C               block-c-derivation/data/{room_weights,total_fit}.csv             True
+    D                             block-d-derivation/data/stage2_fit.csv             True
+    E block-e-derivation/data/{sat_bias_fit,mixing_map,airflow_unit}.csv             True
+    F                          block-f-derivation/data/zone_gain_fit.csv             True
+
+15 of 53 boxes carry an imputed or pooled parameter (see box_provenance_table); the rest are fitted.
+
+building the episode tape ...
+  tape: dropped 10 day(s) with >50% of outdoor temperature missing: 2026-06-10, 2026-06-11, 2026-06-13, 2026-06-14, 2026-06-15, 2026-07-30, 2026-07-31, 2026-08-01, 2026-08-02, 2026-08-03
+86 full days -> 67 train, 19 test (test window is NOT opened by this script)
+as-operated comfort cost on the training window: 1384.2 per episode (sum of squared zone-K above setpoint+deadband, all 53 boxes)
+as-operated ventilation-infeasible AHU-steps:   0.25 per episode
+  -> these become the constraint budgets: the agent must not be worse than the plant.
+
+buffer seeded with 6432 transitions from the as-operated record
+
+  step    2400  ep   25  return    -110.4  fan   44.9 kWh  comfort 1179.79  alpha 0.493  lam_c 0.28  (34 steps/s)
+  step    4800  ep   50  return     -96.6  fan   43.1 kWh  comfort 1577.92  alpha 0.259  lam_c 0.51  (32 steps/s)
+  step    7200  ep   75  return    -110.4  fan   47.2 kWh  comfort 1044.02  alpha 0.150  lam_c 0.31  (33 steps/s)
+  step    9600  ep  100  return    -104.1  fan   46.2 kWh  comfort   94.02  alpha 0.100  lam_c 0.05  (32 steps/s)
+  step   12000  ep  125  return     -82.8  fan   35.6 kWh  comfort   82.75  alpha 0.086  lam_c 0.02  (32 steps/s)
+  step   14400  ep  150  return     -98.9  fan   44.6 kWh  comfort 1101.05  alpha 0.102  lam_c 0.01  (33 steps/s)
+  step   16800  ep  175  return     -87.2  fan   37.7 kWh  comfort   76.52  alpha 0.098  lam_c 0.00  (33 steps/s)
+  step   19200  ep  200  return    -115.2  fan   49.1 kWh  comfort 2095.49  alpha 0.094  lam_c 0.00  (33 steps/s)

@@ -1,0 +1,3 @@
+point,derived_from,n,mean_residual,max_abs_residual,tolerance
+ahu_b8_1__water_delta_temperature,ahu_b8_1__return_water_temperature - ahu_b8_1__supply_water_temperature,8650,-0.0008590992369941461,1.1334539999999977,2.0
+ahu_b8_2__water_delta_temperature,ahu_b8_2__return_water_temperature - ahu_b8_2__supply_water_temperature,8650,0.00013448512138726506,0.8636999999999944,2.0

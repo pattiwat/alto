@@ -1,0 +1,2 @@
+nights,plateau_mean_c,plateau_sd_k,plateau_min_c,plateau_max_c,corr_with_night_outdoor,lag1_autocorr,mon_night_mean_c,fri_night_mean_c,sat_night_mean_c,sun_night_mean_c,weekend_drift_fri_to_sun_k,weekend_drift_k_per_uncooled_day,weekday_cooling_mon_to_fri_k_per_day,tech_plateau_mean_c,tech_plateau_sd_k
+88,24.75944092895744,0.5431064148613552,23.60708845315904,26.114927505446623,0.344732332275641,0.4955192579287317,24.909691720462543,24.21670275682923,25.04126263616558,25.62972889681125,1.3093618191721141,0.6546809095860571,-0.17324724090832877,24.75,0.54

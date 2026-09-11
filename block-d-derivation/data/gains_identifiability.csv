@@ -1,0 +1,2 @@
+pir_sensors,zones_sharing_them,n_steps,occ_mean,occ_sd,occ_cv,occ_p5,occ_p95,r2_of_occ_on_hour_profile,flow_cv_window,median_flow_cv_on_hours,zones_with_flow_cv_below_0p1,zones_fitted,technique_median_flow_cv,technique_zones_below_0p1,parked_zones_named
+4,51,2078,0.3120518036854347,0.09654103302794724,0.30937502006963524,0.16666664874999998,0.482064975,0.16968680344999842,"weekday 08:00-16:59, fan on, training window",0.11484024109204027,23,51,0.32,8,12

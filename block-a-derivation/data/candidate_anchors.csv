@@ -1,0 +1,7 @@
+anchor,sp_ref,f_ref,n_steps,note,ahu
+A per-step (status quo in src/effects.py),,,2682,"each step's own logged (SP, Hz); no fixed pair exists",1
+B modal baseline (recommended),0.55,35.91853107985481,2204,the operating point beta was measured around,1
+C episode-mask median,0.55,35.633,2682,precedent at run_control_gap.py:270; mixes episode steps in,1
+A per-step (status quo in src/effects.py),,,2868,"each step's own logged (SP, Hz); no fixed pair exists",2
+B modal baseline (recommended),0.6,35.624711908951795,2614,the operating point beta was measured around,2
+C episode-mask median,0.6,35.4477,2868,precedent at run_control_gap.py:270; mixes episode steps in,2
